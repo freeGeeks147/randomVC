@@ -22,13 +22,14 @@ io.on('connection', socket => {
   console.log('New client connected:', socket.id);
 
   // A client requests to find a partner
-  socket.on('join', () => {
+  socket.on('join', ({ mobile }) => {
+    socket.mobile = Boolean(mobile);
     if (waiting.length > 0) {
       const other = waiting.shift();
       partners.set(socket.id, other.id);
       partners.set(other.id, socket.id);
-      socket.emit('match', { id: other.id, initiator: false });
-      other.emit('match', { id: socket.id, initiator: true });
+      socket.emit('match', { id: other.id, initiator: false, partnerMobile: other.mobile });
+      other.emit('match', { id: socket.id, initiator: true, partnerMobile: socket.mobile });
     } else {
       waiting.push(socket);
     }
