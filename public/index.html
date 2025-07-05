@@ -3,29 +3,22 @@
 <head>
   <meta charset="utf-8">
   <title>Random Video Chat</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; }
+    video { width: 45%; max-width: 300px; background: #000; margin: 5px; }
+    #videos { display: flex; justify-content: center; flex-wrap: wrap; }
+  </style>
 </head>
 <body>
-  <h1>🚀 Video-chat server is up!</h1>
-  <p>Open your browser console to see signaling logs.</p>
+  <h1>Random Video Chat</h1>
+  <div id="videos">
+    <video id="localVideo" autoplay playsinline muted></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+  </div>
+  <button id="startBtn">Start / Next</button>
+  <p id="status"></p>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script>
-    const socket = io();
-
-    socket.on('connect', () => {
-      console.log('Connected to signaling server as', socket.id);
-    });
-
-    // Example: listen for relayed signals
-    socket.on('signal', ({ from, data }) => {
-      console.log('Signal from', from, data);
-    });
-
-    // For testing: send a dummy signal after 3s
-    setTimeout(() => {
-      console.log('Sending test signal to self');
-      socket.emit('signal', { to: socket.id, data: { msg: 'hello!' } });
-    }, 3000);
-  </script>
+  <script src="client.js"></script>
 </body>
 </html>
