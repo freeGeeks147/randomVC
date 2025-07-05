@@ -4,13 +4,22 @@ const remoteVideo = document.getElementById('remoteVideo');
 const startBtn = document.getElementById('startBtn');
 const status = document.getElementById('status');
 
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
 let localStream;
 let pc;
 let partnerId;
+let partnerIsMobile = false;
 
 async function initMedia() {
+  const constraints = {
+    audio: true,
+    video: isMobile
+      ? { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } }
+      : true
+  };
   try {
-    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    localStream = await navigator.mediaDevices.getUserMedia(constraints);
     localVideo.srcObject = localStream;
   } catch (err) {
     console.error('Media error:', err);
@@ -23,15 +32,36 @@ initMedia();
 startBtn.onclick = () => {
   socket.emit('leave');
   cleanup();
-  socket.emit('join');
+  socket.emit('join', { mobile: isMobile });
   status.textContent = 'Looking for a partner...';
 };
 
-function startConnection(initiator) {
+function startConnection(initiator, partnerMobile) {
   pc = new RTCPeerConnection({
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      // Public TURN for demo use only; replace with your own in production
+      {
+        urls: [
+          'turn:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:443',
+          'turn:openrelay.metered.ca:443?transport=tcp'
+        ],
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      }
+    ]
   });
   localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+
+  pc.getSenders().forEach(sender => {
+    if (sender.track && sender.track.kind === 'video') {
+      const params = sender.getParameters();
+      if (!params.encodings) params.encodings = [{}];
+      params.encodings[0].maxBitrate = partnerMobile ? 300_000 : 800_000;
+      sender.setParameters(params).catch(e => console.error('Failed to set bitrate', e));
+    }
+  });
 
   pc.onicecandidate = ({ candidate }) => {
     if (candidate) socket.emit('signal', { to: partnerId, data: { candidate } });
@@ -50,10 +80,11 @@ function startConnection(initiator) {
   }
 }
 
-socket.on('match', ({ id, initiator }) => {
+socket.on('match', ({ id, initiator, partnerMobile }) => {
   partnerId = id;
+  partnerIsMobile = Boolean(partnerMobile);
   status.textContent = 'Partner found! Connecting...';
-  startConnection(initiator);
+  startConnection(initiator, partnerIsMobile);
 });
 
 socket.on('signal', async ({ from, data }) => {
