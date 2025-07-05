@@ -14,16 +14,56 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/index.html'));
 });
 
+// In-memory waiting queue and partner map
+const waiting = [];
+const partners = new Map();
+
 io.on('connection', socket => {
   console.log('New client connected:', socket.id);
 
-  // Example: relay signaling messages
+  // A client requests to find a partner
+  socket.on('join', ({ mobile }) => {
+    socket.mobile = Boolean(mobile);
+    if (waiting.length > 0) {
+      const other = waiting.shift();
+      partners.set(socket.id, other.id);
+      partners.set(other.id, socket.id);
+      socket.emit('match', { id: other.id, initiator: false, partnerMobile: other.mobile });
+      other.emit('match', { id: socket.id, initiator: true, partnerMobile: socket.mobile });
+    } else {
+      waiting.push(socket);
+    }
+  });
+
+  // Relay signaling messages between paired clients
   socket.on('signal', ({ to, data }) => {
     io.to(to).emit('signal', { from: socket.id, data });
   });
 
+  // Leaving the current chat (e.g., skip/next)
+  socket.on('leave', () => {
+    const partnerId = partners.get(socket.id);
+    if (partnerId) {
+      io.to(partnerId).emit('partner-left');
+      partners.delete(partnerId);
+      partners.delete(socket.id);
+    } else {
+      const idx = waiting.findIndex(s => s.id === socket.id);
+      if (idx !== -1) waiting.splice(idx, 1);
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
+    const partnerId = partners.get(socket.id);
+    if (partnerId) {
+      io.to(partnerId).emit('partner-left');
+      partners.delete(partnerId);
+      partners.delete(socket.id);
+    } else {
+      const idx = waiting.findIndex(s => s.id === socket.id);
+      if (idx !== -1) waiting.splice(idx, 1);
+    }
   });
 });
 
